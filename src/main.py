@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-import diameter.base_diameter as diameter
+from diameter.diameter_common_messages import *
 import socket
-import struct
 
 from colorama import Fore, Style
 from pyfiglet import figlet_format
@@ -30,19 +29,30 @@ if __name__ == "__main__":
         port = int(input("Enter peer port (default 3868): "))
         buffer = 4096
 
+    origin_host = input("Enter your origin host: ")
+    origin_realm = input("Enter your origin realm: ")
+    origin_host = origin_host.encode("ascii")
+    origin_realm = origin_realm.encode("ascii")
+
     # Build requests
     print("[*] Initialize Diameter stack ...")
-    cer = diameter.DiameterRequest(1, diameter.CER_COMMAND_CODE)
-    cer.add_avp(264, 0x40, b"diamsploit-client")
-    cer.add_avp(296, 0x40, b"localdomain")
-    cer.add_avp(266, 0x40, struct.pack("!I", 0))
-    cer.add_avp(269, 0x00, b"diamsploit")
+    cer = DiameterRequest(VERSION_ONE, CER_COMMAND_CODE)
+    cer.add_avp(AVP_ORIGIN_HOST, 0x40, origin_host)
+    cer.add_avp(AVP_ORIGIN_REALM, 0x40, origin_realm)
+    cer.add_avp(AVP_VENDOR_ID, 0x40, 0)
+    cer.add_avp(AVP_PRODUCT_NAME, 0x00, b"diamsploit")
     cer.build()
     
-    dwr = diameter.DiameterRequest(1, diameter.DWR_COMMAND_CODE)
-    dwr.add_avp(264, 0x40, b"diamsploit-client")
-    dwr.add_avp(296, 0x40, b"localdomain")
+    dwr = DiameterRequest(VERSION_ONE, DWR_COMMAND_CODE)
+    dwr.add_avp(AVP_ORIGIN_HOST, 0x40, origin_host)
+    dwr.add_avp(AVP_ORIGIN_REALM, 0x40, origin_realm)
     dwr.build()
+
+    dpr = DiameterRequest(VERSION_ONE, DPR_COMMAND_CODE)
+    dpr.add_avp(AVP_ORIGIN_HOST, 0x40, origin_host)
+    dpr.add_avp(AVP_ORIGIN_REALM, 0x40, origin_realm)
+    dpr.add_avp(AVP_DISCONNECT_CAUSE, 0x40, DISCONNECT_CAUSE_DO_NOT_WANT_TO_TALK_TO_YOU)
+    dpr.build()
 
     # Server connection
     print("[*] Connecting to server ...")
@@ -59,4 +69,9 @@ if __name__ == "__main__":
     dwa = s.recv(buffer)
     print(Fore.GREEN + "[+] Response (DWA): " + Style.RESET_ALL, " ".join(f"{b:02X}" for b in dwa))
         
+    print("[*] Sending Disconnect-Peer-Request (DPR) ...")
+    s.send(dpr.get_msg())
+    dpa = s.recv(buffer)
+    print(Fore.GREEN + "[+] Response (DPA): " + Style.RESET_ALL, " ".join(f"{b:02X}" for b in dpa))
+
     s.close()

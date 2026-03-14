@@ -1,23 +1,45 @@
 from dataclasses import dataclass
+from typing import ClassVar
 import struct
 import random
+
+# Version
+VERSION_ONE = 1
 
 # Command codes
 CER_COMMAND_CODE = 257
 DWR_COMMAND_CODE = 280
+DPR_COMMAND_CODE = 282
+
+# Application ID
+DIAMETER_COMMON_MESSAGES_APPLICATION_ID = 0
+
+# AVP codes
+AVP_ORIGIN_HOST = 264
+AVP_ORIGIN_REALM = 296
+AVP_VENDOR_ID = 266
+AVP_PRODUCT_NAME = 269
+AVP_DISCONNECT_CAUSE = 273
+
+# Disconnect-Cause codes
+DISCONNECT_CAUSE_REBOOTING = 0
+DISCONNECT_CAUSE_BUSY = 1
+DISCONNECT_CAUSE_DO_NOT_WANT_TO_TALK_TO_YOU = 2
 
 @dataclass
 class DiameterHeader:
     version: int
-    length: int
-    request: bool
+    avps_length: int
+    flags: int
     command_code: int
     application_id: int
+
+    HEADER_LENGTH: ClassVar[int] = 20
         
     def to_bytes(self):
         header = struct.pack("!B", self.version)
-        header += struct.pack("!I", 20 + self.length)[1:]
-        header += struct.pack("!B", 0x80 if self.request else 0x0)
+        header += struct.pack("!I", self.HEADER_LENGTH + self.avps_length)[1:]
+        header += struct.pack("!B", self.flags)
         header += struct.pack("!I", self.command_code)[1:]
         header += struct.pack("!I", self.application_id)
         header += struct.pack("!I", random.randint(1, 0xffffffff))
@@ -30,8 +52,10 @@ class DiameterAVP:
     flags: int
     data: bytes
 
+    AVP_HEADER_LENGTH: ClassVar[int] = 8
+
     def to_bytes(self):
-        length = 8 + len(self.data)
+        length = self.AVP_HEADER_LENGTH + len(self.data)
         pad = (4 - (length % 4)) % 4
         header = struct.pack("!I", self.code)
         header += struct.pack("!B", self.flags)
@@ -46,14 +70,23 @@ class DiameterRequest:
         self.avps = b""
     
     def add_avp(self, code, flags, data):
-        self.avps += DiameterAVP(code, flags, data).to_bytes()
+        if code == AVP_VENDOR_ID or code == AVP_DISCONNECT_CAUSE:
+            payload = struct.pack("!I", data)
+        else:
+            payload = data
+        self.avps += DiameterAVP(
+            code=code, 
+            flags=flags, 
+            data=payload
+        ).to_bytes()
     
     def build(self):
-        self.header = DiameterHeader(self.version, 
-            len(self.avps), 
-            True, 
-            self.command_code,
-            0
+        self.header = DiameterHeader(
+            version=self.version, 
+            avps_length=len(self.avps), 
+            flags=0x80, 
+            command_code=self.command_code,
+            application_id=DIAMETER_COMMON_MESSAGES_APPLICATION_ID
         ).to_bytes()
     
     def get_msg(self):
