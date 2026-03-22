@@ -3,28 +3,14 @@ from typing import ClassVar
 import struct
 import random
 
-# Version
+# Versions
 VERSION_ONE = 1
 
-# Command codes
-CER_COMMAND_CODE = 257
-DWR_COMMAND_CODE = 280
-DPR_COMMAND_CODE = 282
-
-# Application ID
-DIAMETER_COMMON_MESSAGES_APPLICATION_ID = 0
-
 # AVP codes
-AVP_ORIGIN_HOST = 264
-AVP_ORIGIN_REALM = 296
-AVP_VENDOR_ID = 266
-AVP_PRODUCT_NAME = 269
-AVP_DISCONNECT_CAUSE = 273
-
-# Disconnect-Cause codes
-DISCONNECT_CAUSE_REBOOTING = 0
-DISCONNECT_CAUSE_BUSY = 1
-DISCONNECT_CAUSE_DO_NOT_WANT_TO_TALK_TO_YOU = 2
+AVP_ORIGIN_HOST   = 264
+AVP_ORIGIN_REALM  = 296
+AVP_VENDOR_ID     = 266
+AVP_PRODUCT_NAME  = 269
 
 @dataclass
 class DiameterHeader:
@@ -63,30 +49,29 @@ class DiameterAVP:
         return header + self.data + (b"\x00" * pad)
 
 class DiameterRequest:
-    def __init__(self, version, command_code):
+    REQUEST_FLAG: ClassVar[int] = 0x80
+
+    def __init__(self, version, command_code, application_id):
         self.version = version
         self.command_code = command_code
+        self.application_id = application_id
         self.header = b""
         self.avps = b""
     
     def add_avp(self, code, flags, data):
-        if code == AVP_VENDOR_ID or code == AVP_DISCONNECT_CAUSE:
-            payload = struct.pack("!I", data)
-        else:
-            payload = data
         self.avps += DiameterAVP(
             code=code, 
             flags=flags, 
-            data=payload
+            data=data
         ).to_bytes()
     
     def build(self):
         self.header = DiameterHeader(
             version=self.version, 
             avps_length=len(self.avps), 
-            flags=0x80, 
+            flags=self.REQUEST_FLAG, 
             command_code=self.command_code,
-            application_id=DIAMETER_COMMON_MESSAGES_APPLICATION_ID
+            application_id=self.application_id
         ).to_bytes()
     
     def get_msg(self):

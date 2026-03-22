@@ -1,6 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 
-from diameter.diameter_common_messages import *
+import diameter
+import diameter.common_messages as cm
 import socket
 
 from colorama import Fore, Style
@@ -36,22 +37,22 @@ if __name__ == "__main__":
 
     # Build requests
     print("[*] Initialize Diameter stack ...")
-    cer = DiameterRequest(VERSION_ONE, CER_COMMAND_CODE)
-    cer.add_avp(AVP_ORIGIN_HOST, 0x40, origin_host)
-    cer.add_avp(AVP_ORIGIN_REALM, 0x40, origin_realm)
-    cer.add_avp(AVP_VENDOR_ID, 0x40, 0)
-    cer.add_avp(AVP_PRODUCT_NAME, 0x00, b"diamsploit")
+    cer = cm.CapabilitiesExchangeRequest(diameter.VERSION_ONE)
+    cer.origin_host(origin_host)
+    cer.origin_realm(origin_realm)
+    cer.vendor_id(0)
+    cer.product_name(b"DiamSploit")
     cer.build()
     
-    dwr = DiameterRequest(VERSION_ONE, DWR_COMMAND_CODE)
-    dwr.add_avp(AVP_ORIGIN_HOST, 0x40, origin_host)
-    dwr.add_avp(AVP_ORIGIN_REALM, 0x40, origin_realm)
+    dwr = cm.DeviceWatchdogRequest(diameter.VERSION_ONE)
+    dwr.origin_host(origin_host)
+    dwr.origin_realm(origin_realm)
     dwr.build()
 
-    dpr = DiameterRequest(VERSION_ONE, DPR_COMMAND_CODE)
-    dpr.add_avp(AVP_ORIGIN_HOST, 0x40, origin_host)
-    dpr.add_avp(AVP_ORIGIN_REALM, 0x40, origin_realm)
-    dpr.add_avp(AVP_DISCONNECT_CAUSE, 0x40, DISCONNECT_CAUSE_DO_NOT_WANT_TO_TALK_TO_YOU)
+    dpr = cm.DisconnectPeerRequest(diameter.VERSION_ONE)
+    dpr.origin_host(origin_host)
+    dpr.origin_realm(origin_realm)
+    dpr.disconnect_cause(cm.DISCONNECT_CAUSE_DO_NOT_WANT_TO_TALK_TO_YOU)
     dpr.build()
 
     # Server connection
