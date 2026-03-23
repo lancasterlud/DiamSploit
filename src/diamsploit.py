@@ -16,7 +16,7 @@ ENV_FILE = Path(__file__).parent.parent / ".env"
 if __name__ == "__main__":
     
     title = figlet_format("DiamSploit")
-    print(Fore.BLUE + title + Style.RESET_ALL)
+    print(Fore.RED + title + Style.RESET_ALL)
 
     # Get params
     if ENV_FILE.exists():
@@ -62,17 +62,20 @@ if __name__ == "__main__":
     
     print("[*] Sending Capabilities-Exchange-Request (CER) ...")
     s.send(cer.get_msg())
-    cea = s.recv(buffer)
-    print(Fore.GREEN + "[+] Response (CEA): " + Style.RESET_ALL, " ".join(f"{b:02X}" for b in cea))
+    cea = diameter.DiameterResponse(s.recv(buffer))
+    cea.process()
+    print(Fore.GREEN + "[+] Response (CEA): " + Style.RESET_ALL, len(cea.avps))
     
     print("[*] Sending Device-Watchdog-Request (DWR) ...")
     s.send(dwr.get_msg())
-    dwa = s.recv(buffer)
-    print(Fore.GREEN + "[+] Response (DWA): " + Style.RESET_ALL, " ".join(f"{b:02X}" for b in dwa))
+    dwa = diameter.DiameterResponse(s.recv(buffer))
+    dwa.process()
+    print(Fore.GREEN + "[+] Response (DWA): " + Style.RESET_ALL, len(dwa.avps))
         
     print("[*] Sending Disconnect-Peer-Request (DPR) ...")
     s.send(dpr.get_msg())
-    dpa = s.recv(buffer)
-    print(Fore.GREEN + "[+] Response (DPA): " + Style.RESET_ALL, " ".join(f"{b:02X}" for b in dpa))
+    dpa = diameter.DiameterResponse(s.recv(buffer))
+    dpa.process()
+    print(Fore.GREEN + "[+] Response (DPA): " + Style.RESET_ALL, dpa.header.command_code)
 
     s.close()

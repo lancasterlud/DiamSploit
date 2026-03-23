@@ -19,6 +19,8 @@ class DiameterHeader:
     flags: int
     command_code: int
     application_id: int
+    hop_by_hop_id: int = random.randint(1, 0xffffffff)
+    end_to_end_id: int = random.randint(1, 0xffffffff)
 
     HEADER_LENGTH: ClassVar[int] = 20
         
@@ -28,25 +30,55 @@ class DiameterHeader:
         header += struct.pack("!B", self.flags)
         header += struct.pack("!I", self.command_code)[1:]
         header += struct.pack("!I", self.application_id)
-        header += struct.pack("!I", random.randint(1, 0xffffffff))
-        header += struct.pack("!I", random.randint(1, 0xffffffff))
+        header += struct.pack("!I", self.hop_by_hop_id)
+        header += struct.pack("!I", self.end_to_end_id)
         return header
+    
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "DiameterHeader":
+        version = data[0]
+        length = struct.unpack("!I", b"\x00" + data[1:4])[0]
+        flags = data[4]
+        command_code = struct.unpack("!I", b"\x00" + data[5:8])[0]
+        application_id = struct.unpack("!I", data[8:12])[0]
+        hop_by_hop_id = struct.unpack("!I", data[12:16])[0]
+        end_to_end_id = struct.unpack("!I", data[16:20])[0]
+        return cls(
+            version, 
+            length - cls.HEADER_LENGTH, 
+            flags, 
+            command_code, 
+            application_id,
+            hop_by_hop_id,
+            end_to_end_id
+        )
 
 @dataclass
 class DiameterAVP:
     code: int
     flags: int
     data: bytes
+    length: int = 0
 
     AVP_HEADER_LENGTH: ClassVar[int] = 8
 
+    def get_padding(self):
+        return (4 - (self.length % 4)) % 4
+
     def to_bytes(self):
-        length = self.AVP_HEADER_LENGTH + len(self.data)
-        pad = (4 - (length % 4)) % 4
+        self.length = self.AVP_HEADER_LENGTH + len(self.data)
         header = struct.pack("!I", self.code)
         header += struct.pack("!B", self.flags)
-        header += struct.pack("!I", length)[1:]
-        return header + self.data + (b"\x00" * pad)
+        header += struct.pack("!I", self.length)[1:]
+        return header + self.data + (b"\x00" * self.get_padding())
+    
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "DiameterAVP":
+        code = struct.unpack("!I", data[:4])[0]
+        flags = data[4]
+        length = struct.unpack("!I", b"\x00" + data[5:8])[0]
+        data = data[8:length]
+        return cls(code, flags, data, length)
 
 class DiameterRequest:
     REQUEST_FLAG: ClassVar[int] = 0x80
@@ -77,3 +109,16 @@ class DiameterRequest:
     def get_msg(self):
         return self.header + self.avps 
     
+class DiameterResponse:
+    def __init__(self, raw):
+        self.raw = raw
+    
+    def process(self):
+        data = self.raw
+        self.header = DiameterHeader.from_bytes(data[:20])
+        data = data[20:]
+        self.avps = []
+        while len(data) > 0:
+            avp = DiameterAVP.from_bytes(data)
+            self.avps.append(avp)
+            data = data[avp.length + avp.get_padding():]

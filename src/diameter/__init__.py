@@ -9,5 +9,6 @@ __all__ = [
     "AVP_PRODUCT_NAME", 
     "DiameterHeader", 
     "DiameterAVP", 
-    "DiameterRequest"
+    "DiameterRequest",
+    "DiameterResponse"
 ]
