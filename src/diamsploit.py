@@ -20,23 +20,23 @@ if __name__ == "__main__":
 
     # Get params
     if ENV_FILE.exists():
-        print("[*] Found .env file")
+        print(Fore.GREEN + "[+] Found .env file\n" + Style.RESET_ALL)
         load_dotenv(ENV_FILE)
         host = os.getenv("HOST")
         port = int(os.getenv("PORT"))
         buffer = int(os.getenv("BUFFER"))
     else:
-        host = input("Enter peer IP address: ")
-        port = int(input("Enter peer port (default 3868): "))
+        host = input("Enter peer IP address > ")
+        port = int(input("Enter peer port (default 3868) > "))
         buffer = 4096
 
-    origin_host = input("Enter your origin host: ")
-    origin_realm = input("Enter your origin realm: ")
+    origin_host = input("Enter your origin host > ")
+    origin_realm = input("Enter your origin realm > ")
     origin_host = origin_host.encode("ascii")
     origin_realm = origin_realm.encode("ascii")
 
     # Build requests
-    print("[*] Initialize Diameter stack ...")
+    print("\n[*] Initialize DIAMETER stack ...")
     cer = cm.CapabilitiesExchangeRequest(diameter.VERSION_ONE)
     cer.origin_host(origin_host)
     cer.origin_realm(origin_realm)
@@ -59,23 +59,33 @@ if __name__ == "__main__":
     print("[*] Connecting to server ...")
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host, port))
+    print(Fore.GREEN + "[+] Connection established\n" + Style.RESET_ALL)
     
-    print("[*] Sending Capabilities-Exchange-Request (CER) ...")
+    print(Fore.YELLOW + "[*] Sending Capabilities-Exchange-Request (CER) ..." + Style.RESET_ALL)
     s.send(cer.get_msg())
     cea = diameter.DiameterResponse(s.recv(buffer))
     cea.process()
-    print(Fore.GREEN + "[+] Response (CEA): " + Style.RESET_ALL, len(cea.avps))
+    if cea.success():
+        print(Fore.GREEN + "[+] DIAMETER_SUCCESS (CEA)" + Style.RESET_ALL)
+    else:
+        print(Fore.RED + "[+] DIAMETER_FAILURE (CEA)" + Style.RESET_ALL)
     
-    print("[*] Sending Device-Watchdog-Request (DWR) ...")
+    print(Fore.YELLOW + "[*] Sending Device-Watchdog-Request (DWR) ..." + Style.RESET_ALL)
     s.send(dwr.get_msg())
     dwa = diameter.DiameterResponse(s.recv(buffer))
     dwa.process()
-    print(Fore.GREEN + "[+] Response (DWA): " + Style.RESET_ALL, len(dwa.avps))
+    if dwa.success():
+        print(Fore.GREEN + "[+] DIAMETER_SUCCESS (DWA)" + Style.RESET_ALL)
+    else:
+        print(Fore.RED + "[+] DIAMETER_FAILURE (DWA)" + Style.RESET_ALL)
         
-    print("[*] Sending Disconnect-Peer-Request (DPR) ...")
+    print(Fore.YELLOW + "[*] Sending Disconnect-Peer-Request (DPR) ..." + Style.RESET_ALL)
     s.send(dpr.get_msg())
     dpa = diameter.DiameterResponse(s.recv(buffer))
     dpa.process()
-    print(Fore.GREEN + "[+] Response (DPA): " + Style.RESET_ALL, dpa.header.command_code)
+    if dpa.success():
+        print(Fore.GREEN + "[+] DIAMETER_SUCCESS (DPA)" + Style.RESET_ALL)
+    else:
+        print(Fore.RED + "[+] DIAMETER_FAILURE (DPA)" + Style.RESET_ALL)
 
     s.close()

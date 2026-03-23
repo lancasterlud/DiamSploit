@@ -7,10 +7,14 @@ import random
 VERSION_ONE = 1
 
 # AVP codes
+AVP_RESULT_CODE   = 268
 AVP_ORIGIN_HOST   = 264
 AVP_ORIGIN_REALM  = 296
 AVP_VENDOR_ID     = 266
 AVP_PRODUCT_NAME  = 269
+
+# AVP values
+DIAMETER_SUCCESS = b"\x00\x00\x07\xd1"
 
 @dataclass
 class DiameterHeader:
@@ -117,8 +121,14 @@ class DiameterResponse:
         data = self.raw
         self.header = DiameterHeader.from_bytes(data[:20])
         data = data[20:]
-        self.avps = []
+        self.avps = {}
         while len(data) > 0:
             avp = DiameterAVP.from_bytes(data)
-            self.avps.append(avp)
+            if avp.code in self.avps:
+                self.avps[avp.code].append(avp)
+            else:
+                self.avps[avp.code] = [avp]
             data = data[avp.length + avp.get_padding():]
+    
+    def success(self):
+        return self.avps[AVP_RESULT_CODE][0].data == DIAMETER_SUCCESS
