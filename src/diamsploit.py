@@ -54,15 +54,19 @@ if __name__ == "__main__":
     if ENV_FILE.exists():
         print(Fore.GREEN + "[+] Found .env file\n" + Style.RESET_ALL)
         load_dotenv(ENV_FILE)
+        bind_ip = os.getenv("BIND_IP")
         host = os.getenv("HOST")
         port = int(os.getenv("PORT"))
+        protocol = os.getenv("PROTOCOL")
         origin_host = os.getenv("ORIGIN_HOST")
         origin_realm = os.getenv("ORIGIN_REALM")
         product_name = os.getenv("PRODUCT_NAME")
         buffer = int(os.getenv("BUFFER"))
     else:
-        host = input("Enter peer IP address > ")
-        port = int(input("Enter peer port (default 3868) > "))
+        bind_ip = input("Enter source peer IP address > ")
+        host = input("Enter destination peer IP address > ")
+        port = int(input("Enter destination peer port (default 3868) > "))
+        protocol = input("Enter transport protocol (TCP/SCTP) > ")
         origin_host = input("Enter your origin host > ")
         origin_realm = input("Enter your origin realm > ")
         product_name = input("Enter your product name > ")
@@ -94,9 +98,17 @@ if __name__ == "__main__":
 
     # Server connection
     print("[*] Connecting to server ...")
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if protocol == "TCP":
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    elif protocol == "SCTP":
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_SCTP)
+    else:
+        exit("Invalid transport protocol")
+    s.bind((bind_ip, 0))
     s.connect((host, port))
     print(Fore.GREEN + "[+] Connection established\n" + Style.RESET_ALL)
+    s.getpeername()
+    send_capabilities_exchange(cer, s, buffer)
 
     command = input("(" + Fore.RED + host + Style.RESET_ALL + ") > ")
     while command != "dpr":
