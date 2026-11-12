@@ -3,34 +3,49 @@
 import ipaddress
 import socket, errno
 import argparse
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from colorama import Fore, Style, init
 
 init()
 
+def pretty_errno(code: int):
+    name = errno.errorcode.get(code, "UNKOWN")
+    message = os.strerror(code)
+    return f"{name} {code}: {message}"
+
 def scan_diameter(ip, port, timeout, protocol="sctp"):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_SCTP if protocol == "sctp" else socket.IPPROTO_TCP)
+    # Connection
+    s = socket.socket(
+        socket.AF_INET, 
+        socket.SOCK_STREAM, 
+        socket.IPPROTO_SCTP if protocol == "sctp" else socket.IPPROTO_TCP
+    )
     try:
         s.settimeout(timeout)
         conn = s.connect_ex((str(ip), port))
-        if conn == 0:
-            print(Fore.GREEN + f"[+] DIAMETER FOUND on {ip}" + Style.RESET_ALL)
-            result = 0
-        elif conn == errno.ECONNREFUSED:
-            print(Fore.RED + f"[-] {ip} closed" + Style.RESET_ALL)
-            result = 1
-        else:
-            print(
-                Fore.MAGENTA
-                + f"[?] {ip} is filtered or unreachable (error code: {conn})"
-                + Style.RESET_ALL
-            )
-            result = 2
     except OSError as e:
         print(Fore.RED + f"[!] Error connecting to {ip} - {e}" + Style.RESET_ALL)
     finally:
         s.close()
-    return (ip, result)
+
+    # Evalutation
+    if conn == 0:
+        print(Fore.GREEN + f"[+] DIAMETER FOUND on {ip}" + Style.RESET_ALL)
+        status = "open"
+    elif conn == errno.ECONNREFUSED:
+        print(Fore.RED + f"[-] {ip} closed" + Style.RESET_ALL)
+        status = "closed"
+    elif conn in (errno.ETIMEDOUT, errno.EAGAIN, errno.EWOULDBLOCK, errno.EHOSTUNREACH):
+        status = "unreachable"
+    else:
+        print(
+            Fore.MAGENTA
+            + f"[?] Status of {ip} is unknown (error code: {pretty_errno(conn)})"
+            + Style.RESET_ALL
+        )
+        status = "unknown"
+    return (ip, status)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Diameter protocol scanner")
@@ -55,7 +70,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--protocol", 
         type=str, 
-        default="sctp", 
+        default="sctp",
+        choices=["tcp", "sctp"],
         help="Protocol to use (default: sctp)"
     )
     args = parser.parse_args()
@@ -68,12 +84,27 @@ if __name__ == "__main__":
     print(Fore.YELLOW + "[*] Starting DIAMETER scan..." + Style.RESET_ALL)
     net = ipaddress.ip_network(args.network)
     discovered = []
+    results = {
+        "open": 0,
+        "closed": 0,
+        "unreachable": 0,
+        "unknown": 0
+    }
+
+    # Multi-thread scan
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(scan_diameter, ip, args.port, args.timeout, args.protocol) for ip in net.hosts()]
         for future in as_completed(futures):
             future_result = future.result()
-            if future_result == 0 or future_result == 2:
+            if future_result[1] == "open":
                 discovered.append(future_result[0])
-    print(Fore.GREEN + "\n[*] Scan completed." + Style.RESET_ALL)
-    for ip in discovered:
-        print(Fore.GREEN + f"[+] DIAMETER service discovered on {ip}" + Style.RESET_ALL)
+            results[future_result[1]] += 1
+    
+    print(Fore.CYAN + "\n[*] Scan completed:" + Style.RESET_ALL)
+    print(f"    Open: {results['open']}")
+    print(f"    Closed: {results['closed']}")
+    print(f"    Unreachable: {results['unreachable']}")
+    print(f"    Unknown: {results['unknown']}\n")
+
+    for host in discovered:
+        print(Fore.GREEN + f"[+] DIAMETER service discovered on {host[0]}" + Style.RESET_ALL)
